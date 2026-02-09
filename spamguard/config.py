@@ -20,6 +20,7 @@ class SpamGuardConfig:
     score_threshold: int = 6
     timeout_minutes: int = 10
     log_channel_id: int | None = None
+    log_viewer_role_id: int | None = None
     ignore_role_ids: list[int] = field(default_factory=list)
     ignore_channel_ids: list[int] = field(default_factory=list)
 

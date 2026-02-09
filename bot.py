@@ -54,6 +54,31 @@ async def ensure_manage_and_guild(
     return ctx.guild, config_store.get_guild_config(ctx.guild.id)
 
 
+async def ensure_log_viewer_role(
+    guild: discord.Guild,
+    config: Any,
+) -> discord.Role | None:
+    role = None
+    if getattr(config, "log_viewer_role_id", None):
+        role = guild.get_role(config.log_viewer_role_id)
+    if role:
+        return role
+    try:
+        role = await guild.create_role(
+            name="SpamGuard-Log閲覧者",
+            reason="SpamGuardログ閲覧用ロールの自動作成",
+            mentionable=False,
+            hoist=False,
+        )
+    except discord.Forbidden:
+        return None
+    except discord.HTTPException:
+        return None
+    config.log_viewer_role_id = role.id
+    config_store.save()
+    return role
+
+
 def format_action_status(status: str) -> str:
     mapping = {
         "ok": "成功",
@@ -223,6 +248,7 @@ async def status(ctx: discord.ApplicationContext) -> None:
         f"score_threshold={config.score_threshold}",
         f"timeout_minutes={config.timeout_minutes}",
         f"log_channel_id={config.log_channel_id}",
+        f"log_viewer_role_id={getattr(config, 'log_viewer_role_id', None)}",
         f"ignore_role_ids={config.ignore_role_ids}",
         f"ignore_channel_ids={config.ignore_channel_ids}",
     ]
@@ -262,116 +288,182 @@ async def set(
 setting = spamguard.create_subgroup("setting", "設定をDiscord UIで変更します")
 
 
-@setting.command(description="連投検知の設定")
-async def rapid(
+@setting.command(name="bulk", description="スパム検知の各種設定を一括更新します")
+async def bulk(
     ctx: discord.ApplicationContext,
-    window_sec: Option(int, "判定ウィンドウ秒数", min_value=1),
-    max_msg_in_window: Option(int, "ウィンドウ内の最大投稿数", min_value=1),
+    window_sec: Option(int, "連投判定ウィンドウ秒数", required=False, min_value=1) = None,
+    max_msg_in_window: Option(
+        int, "連投判定の投稿数閾値", required=False, min_value=1
+    ) = None,
+    duplicate_window_sec: Option(
+        int, "同文判定ウィンドウ秒数", required=False, min_value=1
+    ) = None,
+    dup_threshold: Option(int, "同文判定回数閾値", required=False, min_value=1) = None,
+    url_threshold: Option(
+        int, "1メッセージ内URL数閾値", required=False, min_value=1
+    ) = None,
+    url_repeat_window_sec: Option(
+        int, "同一URL監視秒数", required=False, min_value=1
+    ) = None,
+    url_repeat_threshold: Option(
+        int, "同一URL投稿回数閾値", required=False, min_value=1
+    ) = None,
+    mention_threshold: Option(
+        int, "メンション数閾値", required=False, min_value=1
+    ) = None,
+    score_threshold: Option(
+        int, "スパム判定スコア閾値", required=False, min_value=1
+    ) = None,
+    timeout_minutes: Option(
+        int, "タイムアウト分数", required=False, min_value=1
+    ) = None,
 ) -> None:
     guild, config = await ensure_manage_and_guild(ctx)
     if not guild or not config:
         return
-    config.window_sec = window_sec
-    config.max_msg_in_window = max_msg_in_window
-    config_store.save()
-    await ctx.respond(
-        f"連投検知設定を更新: window_sec={window_sec}, max_msg_in_window={max_msg_in_window}",
-        ephemeral=True,
-    )
 
+    updates: list[str] = []
+    values = {
+        "window_sec": window_sec,
+        "max_msg_in_window": max_msg_in_window,
+        "duplicate_window_sec": duplicate_window_sec,
+        "dup_threshold": dup_threshold,
+        "url_threshold": url_threshold,
+        "url_repeat_window_sec": url_repeat_window_sec,
+        "url_repeat_threshold": url_repeat_threshold,
+        "mention_threshold": mention_threshold,
+        "score_threshold": score_threshold,
+        "timeout_minutes": timeout_minutes,
+    }
+    for key, value in values.items():
+        if value is None:
+            continue
+        setattr(config, key, value)
+        updates.append(f"{key}={value}")
 
-@setting.command(description="同文連投検知の設定")
-async def duplicate(
-    ctx: discord.ApplicationContext,
-    duplicate_window_sec: Option(int, "同文判定ウィンドウ秒数", min_value=1),
-    dup_threshold: Option(int, "同文判定回数", min_value=1),
-) -> None:
-    guild, config = await ensure_manage_and_guild(ctx)
-    if not guild or not config:
+    if not updates:
+        await ctx.respond(
+            "更新する値が指定されていません。必要な項目だけ入力してください。",
+            ephemeral=True,
+        )
         return
-    config.duplicate_window_sec = duplicate_window_sec
-    config.dup_threshold = dup_threshold
+
     config_store.save()
-    await ctx.respond(
-        f"同文連投設定を更新: duplicate_window_sec={duplicate_window_sec}, dup_threshold={dup_threshold}",
-        ephemeral=True,
+    await ctx.respond("一括更新しました: " + ", ".join(updates), ephemeral=True)
+
+
+async def apply_log_visibility_restriction(
+    guild: discord.Guild,
+    channel: discord.TextChannel,
+    config: Any,
+) -> tuple[bool, str]:
+    me = guild.me
+    if not me:
+        return False, "Botメンバー情報を取得できませんでした。"
+    if not me.guild_permissions.manage_roles:
+        return False, "Botに Manage Roles 権限が必要です。"
+    if not me.guild_permissions.manage_channels:
+        return False, "Botに Manage Channels 権限が必要です。"
+
+    role = await ensure_log_viewer_role(guild, config)
+    if not role:
+        return False, "閲覧用ロールの作成に失敗しました。"
+
+    overwrites = dict(channel.overwrites)
+    overwrites[guild.default_role] = discord.PermissionOverwrite(
+        view_channel=False,
+        read_message_history=False,
     )
-
-
-@setting.command(description="URL検知の設定")
-async def url(
-    ctx: discord.ApplicationContext,
-    url_threshold: Option(int, "1メッセージ内URL閾値", min_value=1),
-    url_repeat_window_sec: Option(int, "同一URL監視秒数", min_value=1),
-    url_repeat_threshold: Option(int, "同一URL投稿回数閾値", min_value=1),
-) -> None:
-    guild, config = await ensure_manage_and_guild(ctx)
-    if not guild or not config:
-        return
-    config.url_threshold = url_threshold
-    config.url_repeat_window_sec = url_repeat_window_sec
-    config.url_repeat_threshold = url_repeat_threshold
-    config_store.save()
-    await ctx.respond(
-        (
-            "URL設定を更新: "
-            f"url_threshold={url_threshold}, "
-            f"url_repeat_window_sec={url_repeat_window_sec}, "
-            f"url_repeat_threshold={url_repeat_threshold}"
-        ),
-        ephemeral=True,
+    overwrites[role] = discord.PermissionOverwrite(
+        view_channel=True,
+        read_message_history=True,
     )
-
-
-@setting.command(description="メンション検知の設定")
-async def mention(
-    ctx: discord.ApplicationContext,
-    mention_threshold: Option(int, "メンション数閾値", min_value=1),
-) -> None:
-    guild, config = await ensure_manage_and_guild(ctx)
-    if not guild or not config:
-        return
-    config.mention_threshold = mention_threshold
-    config_store.save()
-    await ctx.respond(
-        f"メンション検知設定を更新: mention_threshold={mention_threshold}",
-        ephemeral=True,
+    overwrites[me] = discord.PermissionOverwrite(
+        view_channel=True,
+        send_messages=True,
+        read_message_history=True,
     )
+    try:
+        await channel.edit(
+            overwrites=overwrites,
+            reason="SpamGuardログ閲覧制限の適用",
+        )
+    except discord.Forbidden:
+        return False, "チャンネル権限の変更に失敗しました。"
+    except discord.HTTPException:
+        return False, "チャンネル更新中にAPIエラーが発生しました。"
+
+    config.log_viewer_role_id = role.id
+    return True, f"閲覧ロール: {role.mention}"
 
 
-@setting.command(description="スパム判定とタイムアウトの設定")
-async def moderation(
-    ctx: discord.ApplicationContext,
-    score_threshold: Option(int, "スパム判定スコア閾値", min_value=1),
-    timeout_minutes: Option(int, "タイムアウト分数", min_value=1),
-) -> None:
-    guild, config = await ensure_manage_and_guild(ctx)
-    if not guild or not config:
-        return
-    config.score_threshold = score_threshold
-    config.timeout_minutes = timeout_minutes
-    config_store.save()
-    await ctx.respond(
-        f"モデレーション設定を更新: score_threshold={score_threshold}, timeout_minutes={timeout_minutes}",
-        ephemeral=True,
-    )
-
-
-@setting.command(name="log_channel_set", description="ログチャンネルを設定します")
-async def log_channel_set(
+@setting.command(name="log_setup", description="ログチャンネル設定と閲覧制限をまとめて行います")
+async def log_setup(
     ctx: discord.ApplicationContext,
     channel: Option(discord.TextChannel, "ログ出力チャンネル"),
+    restrict: Option(bool, "管理者+専用ロールだけ閲覧可能にする", required=False) = True,
 ) -> None:
     guild, config = await ensure_manage_and_guild(ctx)
     if not guild or not config:
         return
+
     config.log_channel_id = channel.id
+    message = f"ログチャンネルを設定しました: {channel.mention}"
+
+    if restrict:
+        ok, detail = await apply_log_visibility_restriction(guild, channel, config)
+        if not ok:
+            await ctx.respond(detail, ephemeral=True)
+            return
+        message = f"{message}\n閲覧制限を適用しました（{detail}）"
     config_store.save()
-    await ctx.respond(f"ログチャンネルを設定しました: {channel.mention}", ephemeral=True)
+    await ctx.respond(message, ephemeral=True)
 
 
-@setting.command(name="log_channel_clear", description="ログチャンネル設定を解除します")
-async def log_channel_clear(ctx: discord.ApplicationContext) -> None:
+@setting.command(name="log_viewer", description="ログ閲覧ロールを付与/剥奪します")
+async def log_viewer(
+    ctx: discord.ApplicationContext,
+    action: Option(str, "操作", choices=["add", "remove"]),
+    member: Option(discord.Member, "対象ユーザー"),
+) -> None:
+    guild, config = await ensure_manage_and_guild(ctx)
+    if not guild or not config:
+        return
+
+    role = guild.get_role(getattr(config, "log_viewer_role_id", 0))
+    if action == "add" and not role:
+        role = await ensure_log_viewer_role(guild, config)
+    if not role:
+        await ctx.respond(
+            "閲覧ロールがありません。先に /spamguard setting log_setup を実行してください。",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        if action == "add":
+            await member.add_roles(role, reason="SpamGuardログ閲覧権限の付与")
+            await ctx.respond(
+                f"{member.mention} に {role.mention} を付与しました。", ephemeral=True
+            )
+        else:
+            await member.remove_roles(role, reason="SpamGuardログ閲覧権限の剥奪")
+            await ctx.respond(
+                f"{member.mention} から {role.mention} を剥奪しました。", ephemeral=True
+            )
+    except discord.Forbidden:
+        await ctx.respond(
+            "ロール操作に失敗しました。Botのロール階層を確認してください。",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException:
+        await ctx.respond("ロール操作時にAPIエラーが発生しました。", ephemeral=True)
+        return
+
+
+@setting.command(name="log_clear", description="ログチャンネル設定を解除します")
+async def log_clear(ctx: discord.ApplicationContext) -> None:
     guild, config = await ensure_manage_and_guild(ctx)
     if not guild or not config:
         return

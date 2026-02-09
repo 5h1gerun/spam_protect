@@ -34,11 +34,17 @@ def test_guild_specific_value_is_isolated(tmp_path: Path) -> None:
 
     ok = store.set_guild_value(guild_a, "log_channel_id", 99999)
     assert ok
+    ok_role = store.set_guild_value(guild_a, "log_viewer_role_id", 77777)
+    assert ok_role
 
     assert store.get_guild_config(guild_a).log_channel_id == 99999
+    assert store.get_guild_config(guild_a).log_viewer_role_id == 77777
     assert store.get_guild_config(guild_b).log_channel_id is None
+    assert store.get_guild_config(guild_b).log_viewer_role_id is None
 
     reloaded = ConfigStore(str(config_path))
     reloaded.load()
     assert reloaded.get_guild_config(guild_a).log_channel_id == 99999
+    assert reloaded.get_guild_config(guild_a).log_viewer_role_id == 77777
     assert reloaded.get_guild_config(guild_b).log_channel_id is None
+    assert reloaded.get_guild_config(guild_b).log_viewer_role_id is None
