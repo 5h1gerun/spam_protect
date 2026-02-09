@@ -54,11 +54,11 @@ python bot.py
 
 ## 設定コマンド
 - `/spamguard status` : 現在の設定表示
-- `/spamguard set <key> <value>` : 設定値の直接変更
-- `/spamguard setting rapid` : 連投検知設定
-- `/spamguard setting duplicate` : 同文連投設定
-- `/spamguard setting url` : URL検知設定
-- `/spamguard setting mention` : メンション検知設定
+- `/spamguard setting bulk` : 各種しきい値をまとめて更新
+- `/spamguard setting log_setup` : ログチャンネル設定 + 閲覧制限適用
+- `/spamguard setting log_viewer` : ログ閲覧ロールを付与/剥奪
+- `/spamguard setting log_clear` : ログチャンネル解除
+- `/spamguard set <key> <value>` : 上級者向けの直接変更
 - `/spamguard ignore add <role/channel>` : 例外追加
 - `/spamguard ignore remove <role/channel>` : 例外削除
 
