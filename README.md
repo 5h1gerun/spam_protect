@@ -1,4 +1,4 @@
-# SpamGuard Bot（py-cord）
+# SpamGuard Bot
 
 Discordサーバー向けのスパム対策Botです。  
 連投・同文連投・URL乱投・過剰メンションをスコア方式で検知し、閾値超過時に自動モデレーションを実行します。
