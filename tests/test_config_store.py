@@ -48,3 +48,30 @@ def test_guild_specific_value_is_isolated(tmp_path: Path) -> None:
     assert reloaded.get_guild_config(guild_a).log_viewer_role_id == 77777
     assert reloaded.get_guild_config(guild_b).log_channel_id is None
     assert reloaded.get_guild_config(guild_b).log_viewer_role_id is None
+
+
+def test_unknown_config_keys_are_ignored(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "defaults": {
+                    "score_threshold": 9,
+                    "unknown_key": "x",
+                },
+                "guilds": {
+                    "123": {
+                        "log_channel_id": 1000,
+                        "mystery_flag": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    store = ConfigStore(str(config_path))
+    store.load()
+
+    assert store.default_config.score_threshold == 9
+    assert store.get_guild_config(123).log_channel_id == 1000
