@@ -54,16 +54,90 @@ async def ensure_manage_and_guild(
     return ctx.guild, config_store.get_guild_config(ctx.guild.id)
 
 
-async def log_action(guild: discord.Guild, text: str) -> None:
-    config = config_store.get_guild_config(guild.id)
+def format_action_status(status: str) -> str:
+    mapping = {
+        "ok": "成功",
+        "forbidden": "権限不足",
+        "http_error": "APIエラー",
+        "not_supported": "未対応",
+        "not_attempted": "未実行",
+    }
+    return mapping.get(status, status)
+
+
+def format_reason_labels(reasons: list[str]) -> str:
+    mapping = {
+        "rapid_posting": "短時間の連投",
+        "duplicate_messages": "同文連投",
+        "url_spam": "URL乱投",
+        "repeated_url_posts": "同一URL連投",
+        "mention_spam": "過剰メンション",
+        "new_account": "新規アカウント加点",
+    }
+    if not reasons:
+        return "なし"
+    return ", ".join(mapping.get(reason, reason) for reason in reasons)
+
+
+async def log_spam_event(
+    message: discord.Message,
+    score: int,
+    reasons: list[str],
+    delete_status: str,
+    timeout_status: str,
+) -> None:
+    config = config_store.get_guild_config(message.guild.id)
     if not config.log_channel_id:
         return
-    channel = guild.get_channel(config.log_channel_id)
-    if channel and isinstance(channel, discord.TextChannel):
-        try:
-            await channel.send(text)
-        except discord.Forbidden:
-            pass
+
+    channel = message.guild.get_channel(config.log_channel_id)
+    if not channel or not isinstance(channel, discord.TextChannel):
+        return
+
+    reason_text = format_reason_labels(reasons)
+    content_preview = message.content.strip() or "(本文なし)"
+    if len(content_preview) > 300:
+        content_preview = content_preview[:300] + "..."
+
+    embed = discord.Embed(
+        title="SpamGuard ログ",
+        description="スパム判定によりモデレーションを実行しました。",
+        color=discord.Color.orange(),
+        timestamp=dt.datetime.now(dt.timezone.utc),
+    )
+    avatar_url = message.author.display_avatar.url
+    embed.set_author(name=str(message.author), icon_url=avatar_url)
+    embed.set_thumbnail(url=avatar_url)
+    embed.add_field(
+        name="対象ユーザー",
+        value=f"{message.author.mention}\n`{message.author.id}`",
+        inline=True,
+    )
+    embed.add_field(name="スコア", value=str(score), inline=True)
+    embed.add_field(name="理由", value=reason_text, inline=False)
+    embed.add_field(
+        name="削除結果",
+        value=format_action_status(delete_status),
+        inline=True,
+    )
+    embed.add_field(
+        name="タイムアウト結果",
+        value=format_action_status(timeout_status),
+        inline=True,
+    )
+    embed.add_field(
+        name="投稿チャンネル",
+        value=message.channel.mention,
+        inline=True,
+    )
+    embed.add_field(name="投稿内容(先頭300文字)", value=content_preview, inline=False)
+
+    try:
+        await channel.send(embed=embed)
+    except discord.Forbidden:
+        pass
+    except discord.HTTPException:
+        pass
 
 
 @bot.event
@@ -120,14 +194,12 @@ async def on_message(message: discord.Message) -> None:
         except AttributeError:
             timeout_status = "not_supported"
 
-        reasons = ", ".join(result.reasons) if result.reasons else "unknown"
-        await log_action(
-            message.guild,
-            (
-                f"[SpamGuard] user={message.author}({message.author.id}) "
-                f"score={result.score} reasons={reasons} "
-                f"delete={delete_status} timeout={timeout_status}"
-            ),
+        await log_spam_event(
+            message=message,
+            score=result.score,
+            reasons=result.reasons,
+            delete_status=delete_status,
+            timeout_status=timeout_status,
         )
 
     await bot.process_commands(message)
