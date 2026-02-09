@@ -22,6 +22,8 @@ class VerificationSession:
 
 
 class VerificationManager:
+    PERMISSION_RETRY_DELAY_SECONDS = 120
+
     def __init__(
         self,
         bot: commands.Bot,
@@ -370,14 +372,16 @@ class VerificationManager:
 
             try:
                 if everyone_overwrite is not None:
-                    await channel.set_permissions(
+                    await self._set_permissions_with_retry(
+                        channel,
                         guild.default_role,
                         overwrite=everyone_overwrite,
                         reason="SpamGuard verification isolation",
                     )
                     applied += 1
 
-                await channel.set_permissions(
+                await self._set_permissions_with_retry(
+                    channel,
                     unverified_role,
                     overwrite=unverified_overwrite,
                     reason="SpamGuard verification isolation",
@@ -385,7 +389,8 @@ class VerificationManager:
                 applied += 1
 
                 if verified_overwrite is not None:
-                    await channel.set_permissions(
+                    await self._set_permissions_with_retry(
+                        channel,
                         verified_role,
                         overwrite=verified_overwrite,
                         reason="SpamGuard verification isolation",
@@ -395,7 +400,8 @@ class VerificationManager:
                 if self.bot.user:
                     bot_member = guild.get_member(self.bot.user.id)
                     if bot_member:
-                        await channel.set_permissions(
+                        await self._set_permissions_with_retry(
+                            channel,
                             bot_member,
                             overwrite=discord.PermissionOverwrite(
                                 view_channel=True,
@@ -420,7 +426,8 @@ class VerificationManager:
         verify_channel: discord.TextChannel,
     ) -> None:
         try:
-            await verify_channel.set_permissions(
+            await self._set_permissions_with_retry(
+                verify_channel,
                 member,
                 overwrite=discord.PermissionOverwrite(
                     view_channel=True,
@@ -440,7 +447,8 @@ class VerificationManager:
         verify_channel: discord.TextChannel,
     ) -> None:
         try:
-            await verify_channel.set_permissions(
+            await self._set_permissions_with_retry(
+                verify_channel,
                 member,
                 overwrite=None,
                 reason="SpamGuard verification access cleanup",
@@ -459,7 +467,8 @@ class VerificationManager:
             if log_channel_id and channel.id == log_channel_id:
                 continue
             try:
-                await channel.set_permissions(
+                await self._set_permissions_with_retry(
+                    channel,
                     member,
                     overwrite=discord.PermissionOverwrite(
                         view_channel=True,
@@ -472,6 +481,23 @@ class VerificationManager:
                 failed += 1
                 continue
         return applied, failed
+
+    async def _set_permissions_with_retry(
+        self,
+        channel: discord.abc.GuildChannel,
+        target: discord.Role | discord.Member,
+        *,
+        overwrite: discord.PermissionOverwrite | None,
+        reason: str,
+    ) -> None:
+        try:
+            await channel.set_permissions(target, overwrite=overwrite, reason=reason)
+            return
+        except discord.Forbidden:
+            raise
+        except discord.HTTPException:
+            await asyncio.sleep(self.PERMISSION_RETRY_DELAY_SECONDS)
+            await channel.set_permissions(target, overwrite=overwrite, reason=reason)
 
     def start_session(
         self,
