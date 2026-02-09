@@ -1,0 +1,18 @@
+{
+  "defaults": {
+    "window_sec": 12,
+    "max_msg_in_window": 5,
+    "duplicate_window_sec": 120,
+    "dup_threshold": 3,
+    "url_threshold": 2,
+    "url_repeat_window_sec": 120,
+    "url_repeat_threshold": 3,
+    "mention_threshold": 4,
+    "score_threshold": 6,
+    "timeout_minutes": 10,
+    "log_channel_id": null,
+    "ignore_role_ids": [],
+    "ignore_channel_ids": []
+  },
+  "guilds": {}
+}
