@@ -1,64 +1,77 @@
-# SpamGuard Bot (py-cord)
+# SpamGuard Bot（py-cord）
 
-Discord server spam moderation bot based on the requirements in `Readme.md`.
+Discordサーバー向けのスパム対策Botです。  
+連投・同文連投・URL乱投・過剰メンションをスコア方式で検知し、閾値超過時に自動モデレーションを実行します。
 
-## Features
-- Spam scoring:
-  - rapid posting
-  - duplicate messages
-  - URL flooding
-  - excessive mentions
-  - new account bonus score
-- Auto moderation:
-  - delete spam message
-  - timeout offender
-  - write moderation log
-- Runtime configuration:
-  - `/spamguard status`
-  - `/spamguard setting rapid`
-  - `/spamguard setting duplicate`
-  - `/spamguard setting url`
-  - `/spamguard setting mention`
-  - `/spamguard setting moderation`
-  - `/spamguard setting log_channel_set`
-  - `/spamguard setting log_channel_clear`
-  - `/spamguard ignore add <role/channel>`
-  - `/spamguard ignore remove <role/channel>`
+## 主な機能
+- スパム検知（スコア加算）
+  - 短時間の連投
+  - 同一内容の連続投稿
+  - URLの過剰投稿
+  - 過剰メンション
+  - 新規作成アカウントへの加点
+- 自動モデレーション
+  - 該当メッセージ削除
+  - ユーザーのタイムアウト
+  - ログチャンネルへの記録
+- サーバーごとの設定管理
+  - スラッシュコマンドから各閾値を変更
+  - 例外ロール・例外チャンネルの管理
 
-## Setup
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-2. Create `.env`:
-```bash
-cp .env.example .env
-```
-3. Create `config.json` from template:
-```bash
-cp config.example.json config.json
-```
-4. Set bot token in `.env`:
-```env
-DISCORD_TOKEN=your_token
-SPAMGUARD_CONFIG_PATH=config.json
-```
-5. Run:
-```bash
-python bot.py
-```
-
-## Required Discord Permissions
+## 必要なDiscord権限
 - Read Messages
 - Message Content Intent
 - Manage Messages
 - Moderate Members
 - Send Messages
 
-## Default Parameters
-See `config.example.json` for default values.
+## セットアップ
+1. 依存関係をインストール
+```bash
+pip install -r requirements.txt
+```
 
-## Test
+2. 環境変数ファイルを作成
+```bash
+cp .env.example .env
+```
+
+3. 設定ファイルをテンプレートから作成
+```bash
+cp config.example.json config.json
+```
+
+4. `.env` を編集
+```env
+DISCORD_TOKEN=your_token
+SPAMGUARD_CONFIG_PATH=config.json
+```
+
+5. 起動
+```bash
+python bot.py
+```
+
+## 設定コマンド
+- `/spamguard status` : 現在の設定表示
+- `/spamguard set <key> <value>` : 設定値の直接変更
+- `/spamguard setting rapid` : 連投検知設定
+- `/spamguard setting duplicate` : 同文連投設定
+- `/spamguard setting url` : URL検知設定
+- `/spamguard setting mention` : メンション検知設定
+- `/spamguard ignore add <role/channel>` : 例外追加
+- `/spamguard ignore remove <role/channel>` : 例外削除
+
+## 設定ファイル
+- `config.example.json` : 共有用テンプレート
+- `config.json` : 実運用設定（`.gitignore` で除外）
+
+初期値は `config.example.json` を参照してください。
+
+## テスト
 ```bash
 pytest -q
 ```
+
+## 関連ドキュメント
+- 詳細要件定義: `Readme.md`

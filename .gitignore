@@ -29,3 +29,5 @@ config.json
 Thumbs.db
 .vscode/
 .idea/
+
+docs/
